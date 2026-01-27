@@ -866,7 +866,7 @@ Please refine this macro into a personalized, ready-to-send response.`;
     try {
       const response = await fetch('/api/refine', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 1000,
