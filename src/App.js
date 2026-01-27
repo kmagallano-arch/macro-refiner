@@ -797,6 +797,7 @@ export default function MacroRefiner() {
   const [useCustom, setUseCustom] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [ticketContent, setTicketContent] = useState('');
+  const [additionalNotes, setAdditionalNotes] = useState('');
   const [refinedResponse, setRefinedResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -837,6 +838,7 @@ RULES:
 10. Never include placeholder brackets in your output
 11. If agent name is provided, use it; otherwise remove the signature line or use a generic sign-off
 12. If tracking link is not provided in the ticket, remove that section or mention tracking will be sent separately
+13. IMPORTANT: Pay close attention to the AGENT'S ADDITIONAL NOTES - these contain specific instructions, context, or customizations the agent wants included in the response. Incorporate these notes naturally into the refined response.
 
 Output ONLY the refined response, nothing else.`;
 
@@ -845,10 +847,13 @@ ${currentMacro}
 
 AGENT NAME: ${agentName || 'Not provided'}
 
+AGENT'S ADDITIONAL NOTES (incorporate these into the response):
+${additionalNotes || 'None provided'}
+
 GORGIAS TICKET CONTENT (contains customer info, order details, email history):
 ${ticketContent || 'No ticket content provided'}
 
-Please extract the relevant information from the ticket content and refine this macro into a personalized, ready-to-send response.`;
+Please extract the relevant information from the ticket content, incorporate the agent's additional notes, and refine this macro into a personalized, ready-to-send response.`;
 
     try {
       const response = await fetch('/api/refine', {
@@ -913,7 +918,7 @@ Please extract the relevant information from the ticket content and refine this 
                 ))}
               </div>
             </div>
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
               {filteredMacros.map(macro => (
                 <div key={macro.id} onClick={() => { setSelectedMacro(macro); setUseCustom(false); }} style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #27272a', backgroundColor: selectedMacro?.id === macro.id && !useCustom ? '#27272a' : 'transparent', transition: 'background 0.15s ease' }}>
                   <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '2px' }}>{macro.name}</div>
@@ -941,8 +946,17 @@ Please extract the relevant information from the ticket content and refine this 
               value={ticketContent} 
               onChange={e => setTicketContent(e.target.value)} 
               placeholder="Paste the entire Gorgias ticket content here (Ctrl+A to select all, then Ctrl+V to paste)..." 
-              style={{ width: '100%', flex: 1, minHeight: '350px', padding: '12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', lineHeight: '1.5', resize: 'none', outline: 'none' }} 
+              style={{ width: '100%', flex: 1, minHeight: '200px', padding: '12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', lineHeight: '1.5', resize: 'none', outline: 'none' }} 
             />
+            <div style={{ marginTop: '16px' }}>
+              <label style={{ fontSize: '12px', color: '#71717a', display: 'block', marginBottom: '6px' }}>Additional Notes <span style={{ color: '#a1a1aa' }}>(optional)</span></label>
+              <textarea 
+                value={additionalNotes} 
+                onChange={e => setAdditionalNotes(e.target.value)} 
+                placeholder="Add any extra info: specific offers, tracking links, special instructions, or context to include in the response..." 
+                style={{ width: '100%', height: '100px', padding: '12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', lineHeight: '1.5', resize: 'vertical', outline: 'none' }} 
+              />
+            </div>
             <button onClick={handleRefine} disabled={isLoading || !currentMacro.trim()} style={{ marginTop: '16px', padding: '14px 24px', backgroundColor: isLoading ? '#1e40af' : '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: isLoading || !currentMacro.trim() ? 'not-allowed' : 'pointer', opacity: !currentMacro.trim() ? 0.5 : 1, transition: 'all 0.15s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               {isLoading ? (<><span style={{ animation: 'pulse 1s infinite' }}>●</span>Refining...</>) : ('Refine Macro →')}
             </button>
@@ -952,7 +966,7 @@ Please extract the relevant information from the ticket content and refine this 
               <h2 style={{ fontSize: '13px', fontWeight: '600', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#a1a1aa' }}>Ready to Send</h2>
               {refinedResponse && <button onClick={copyToClipboard} style={{ padding: '6px 12px', backgroundColor: copied ? '#22c55e' : '#27272a', color: copied ? 'white' : '#a1a1aa', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '500', cursor: 'pointer', transition: 'all 0.15s ease' }}>{copied ? '✓ Copied!' : 'Copy'}</button>}
             </div>
-            <div style={{ flex: 1, backgroundColor: '#0a0a0b', borderRadius: '8px', border: '1px solid #27272a', padding: '16px', minHeight: '350px', overflow: 'auto' }}>
+            <div style={{ flex: 1, backgroundColor: '#0a0a0b', borderRadius: '8px', border: '1px solid #27272a', padding: '16px', minHeight: '300px', overflow: 'auto' }}>
               {isLoading ? (<div style={{ color: '#71717a', fontSize: '14px' }}><span style={{ animation: 'pulse 1s infinite' }}>Generating personalized response...</span></div>) : refinedResponse ? (<div style={{ fontSize: '14px', lineHeight: '1.7', whiteSpace: 'pre-wrap', animation: 'slideIn 0.3s ease' }}>{refinedResponse}</div>) : (<div style={{ color: '#52525b', fontSize: '14px', fontStyle: 'italic' }}>Select a macro and paste Gorgias ticket content, then click "Refine Macro" to generate a personalized response.</div>)}
             </div>
             {currentMacro && (
