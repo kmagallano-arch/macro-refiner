@@ -796,14 +796,7 @@ export default function MacroRefiner() {
   const [customMacro, setCustomMacro] = useState('');
   const [useCustom, setUseCustom] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [ticketDetails, setTicketDetails] = useState({
-    customerName: '',
-    customerEmail: '',
-    emailBody: '',
-    orderNumber: '',
-    productName: '',
-    additionalContext: ''
-  });
+  const [ticketContent, setTicketContent] = useState('');
   const [refinedResponse, setRefinedResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -832,36 +825,30 @@ TONE GUIDELINES:
 - Empathetic when appropriate, but not performative
 
 RULES:
-1. Replace all placeholder brackets like {{customer.first_name}}, {{agent.first_name}}, {{tracking_link}}, etc. with appropriate content based on the ticket details
-2. Replace bracketed placeholders like [INSERT...] with appropriate content
-3. Adjust the message to address the specific situation described in the email body
-4. Keep the core structure and intent of the macro
-5. Remove any placeholders that don't have corresponding information - adapt the sentence naturally
-6. If the customer's tone suggests frustration, acknowledge it genuinely without over-apologizing
-7. Match the length to the complexity of the issue - simple issues get shorter responses
-8. Never include placeholder brackets in your output
-9. If agent name is provided, use it; otherwise remove the signature line or use a generic sign-off
-10. If tracking link is not provided, remove that section or mention tracking will be sent separately
+1. The ticket content provided is a copy-paste from Gorgias which includes all customer information, order details, email history, etc.
+2. Extract the customer's name, order number, product details, and any other relevant information from the ticket content
+3. Replace all placeholder brackets like {{customer.first_name}}, {{agent.first_name}}, {{tracking_link}}, etc. with appropriate content based on the extracted details
+4. Replace bracketed placeholders like [INSERT...] with appropriate content
+5. Adjust the message to address the specific situation described in the ticket
+6. Keep the core structure and intent of the macro
+7. Remove any placeholders that don't have corresponding information - adapt the sentence naturally
+8. If the customer's tone suggests frustration, acknowledge it genuinely without over-apologizing
+9. Match the length to the complexity of the issue - simple issues get shorter responses
+10. Never include placeholder brackets in your output
+11. If agent name is provided, use it; otherwise remove the signature line or use a generic sign-off
+12. If tracking link is not provided in the ticket, remove that section or mention tracking will be sent separately
 
 Output ONLY the refined response, nothing else.`;
 
     const userPrompt = `MACRO TEMPLATE:
 ${currentMacro}
 
-TICKET DETAILS:
-Customer Name: ${ticketDetails.customerName || 'Not provided'}
-Customer Email: ${ticketDetails.customerEmail || 'Not provided'}
-Order Number: ${ticketDetails.orderNumber || 'Not provided'}
-Product: ${ticketDetails.productName || 'Not provided'}
-Agent Name: ${agentName || 'Not provided'}
+AGENT NAME: ${agentName || 'Not provided'}
 
-CUSTOMER'S EMAIL:
-${ticketDetails.emailBody || 'No email body provided'}
+GORGIAS TICKET CONTENT (contains customer info, order details, email history):
+${ticketContent || 'No ticket content provided'}
 
-ADDITIONAL CONTEXT:
-${ticketDetails.additionalContext || 'None'}
-
-Please refine this macro into a personalized, ready-to-send response.`;
+Please extract the relevant information from the ticket content and refine this macro into a personalized, ready-to-send response.`;
 
     try {
       const response = await fetch('/api/refine', {
@@ -913,7 +900,7 @@ Please refine this macro into a personalized, ready-to-send response.`;
             <div style={{ width: '10px', height: '10px', backgroundColor: '#22c55e', borderRadius: '50%', boxShadow: '0 0 12px #22c55e' }} />
             <h1 style={{ fontSize: '28px', fontWeight: '600', margin: 0, letterSpacing: '-0.5px' }}>Macro Refiner</h1>
           </div>
-          <p style={{ color: '#71717a', margin: 0, fontSize: '14px' }}>Select a macro, paste ticket details, get a personalized response</p>
+          <p style={{ color: '#71717a', margin: 0, fontSize: '14px' }}>Select a macro, paste Gorgias ticket (Ctrl+A), get a personalized response</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr 1fr', gap: '24px' }}>
           <div style={{ backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', overflow: 'hidden' }}>
@@ -926,7 +913,7 @@ Please refine this macro into a personalized, ready-to-send response.`;
                 ))}
               </div>
             </div>
-            <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
               {filteredMacros.map(macro => (
                 <div key={macro.id} onClick={() => { setSelectedMacro(macro); setUseCustom(false); }} style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #27272a', backgroundColor: selectedMacro?.id === macro.id && !useCustom ? '#27272a' : 'transparent', transition: 'background 0.15s ease' }}>
                   <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '2px' }}>{macro.name}</div>
@@ -947,54 +934,31 @@ Please refine this macro into a personalized, ready-to-send response.`;
               <input type="text" value={agentName} onChange={e => setAgentName(e.target.value)} placeholder="e.g., Sarah" style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '6px', color: '#e4e4e7', fontSize: '13px', outline: 'none' }} />
             </div>
           </div>
-          <div style={{ backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', padding: '20px' }}>
-            <h2 style={{ fontSize: '13px', fontWeight: '600', margin: '0 0 20px 0', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#a1a1aa' }}>Gorgias Ticket Details</h2>
-            <div style={{ display: 'grid', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: '#71717a', display: 'block', marginBottom: '6px' }}>Customer Name</label>
-                  <input type="text" value={ticketDetails.customerName} onChange={e => setTicketDetails({...ticketDetails, customerName: e.target.value})} placeholder="John Smith" style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', outline: 'none' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', color: '#71717a', display: 'block', marginBottom: '6px' }}>Customer Email</label>
-                  <input type="email" value={ticketDetails.customerEmail} onChange={e => setTicketDetails({...ticketDetails, customerEmail: e.target.value})} placeholder="john@example.com" style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', outline: 'none' }} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: '#71717a', display: 'block', marginBottom: '6px' }}>Order Number</label>
-                  <input type="text" value={ticketDetails.orderNumber} onChange={e => setTicketDetails({...ticketDetails, orderNumber: e.target.value})} placeholder="#12345" style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', outline: 'none' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', color: '#71717a', display: 'block', marginBottom: '6px' }}>Product Name</label>
-                  <input type="text" value={ticketDetails.productName} onChange={e => setTicketDetails({...ticketDetails, productName: e.target.value})} placeholder="Widget Pro X" style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', outline: 'none' }} />
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', color: '#71717a', display: 'block', marginBottom: '6px' }}>Customer's Email Body <span style={{ color: '#3b82f6' }}>*</span></label>
-                <textarea value={ticketDetails.emailBody} onChange={e => setTicketDetails({...ticketDetails, emailBody: e.target.value})} placeholder="Paste the customer's email here..." style={{ width: '100%', height: '180px', padding: '12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', lineHeight: '1.5', resize: 'vertical', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', color: '#71717a', display: 'block', marginBottom: '6px' }}>Additional Context (optional)</label>
-                <textarea value={ticketDetails.additionalContext} onChange={e => setTicketDetails({...ticketDetails, additionalContext: e.target.value})} placeholder="Any extra details: previous interactions, special circumstances, internal notes..." style={{ width: '100%', height: '80px', padding: '12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', lineHeight: '1.5', resize: 'vertical', outline: 'none' }} />
-              </div>
-              <button onClick={handleRefine} disabled={isLoading || !currentMacro.trim()} style={{ padding: '14px 24px', backgroundColor: isLoading ? '#1e40af' : '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: isLoading || !currentMacro.trim() ? 'not-allowed' : 'pointer', opacity: !currentMacro.trim() ? 0.5 : 1, transition: 'all 0.15s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                {isLoading ? (<><span style={{ animation: 'pulse 1s infinite' }}>●</span>Refining...</>) : ('Refine Macro →')}
-              </button>
-            </div>
+          <div style={{ backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', padding: '20px', display: 'flex', flexDirection: 'column' }}>
+            <h2 style={{ fontSize: '13px', fontWeight: '600', margin: '0 0 16px 0', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#a1a1aa' }}>Gorgias Ticket</h2>
+            <p style={{ color: '#71717a', margin: '0 0 12px 0', fontSize: '13px' }}>Go to Gorgias ticket → Press <strong style={{ color: '#e4e4e7' }}>Ctrl+A</strong> → Paste here</p>
+            <textarea 
+              value={ticketContent} 
+              onChange={e => setTicketContent(e.target.value)} 
+              placeholder="Paste the entire Gorgias ticket content here (Ctrl+A to select all, then Ctrl+V to paste)..." 
+              style={{ width: '100%', flex: 1, minHeight: '350px', padding: '12px', backgroundColor: '#0a0a0b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '14px', lineHeight: '1.5', resize: 'none', outline: 'none' }} 
+            />
+            <button onClick={handleRefine} disabled={isLoading || !currentMacro.trim()} style={{ marginTop: '16px', padding: '14px 24px', backgroundColor: isLoading ? '#1e40af' : '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: isLoading || !currentMacro.trim() ? 'not-allowed' : 'pointer', opacity: !currentMacro.trim() ? 0.5 : 1, transition: 'all 0.15s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              {isLoading ? (<><span style={{ animation: 'pulse 1s infinite' }}>●</span>Refining...</>) : ('Refine Macro →')}
+            </button>
           </div>
           <div style={{ backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', padding: '20px', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '13px', fontWeight: '600', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#a1a1aa' }}>Ready to Send</h2>
               {refinedResponse && <button onClick={copyToClipboard} style={{ padding: '6px 12px', backgroundColor: copied ? '#22c55e' : '#27272a', color: copied ? 'white' : '#a1a1aa', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '500', cursor: 'pointer', transition: 'all 0.15s ease' }}>{copied ? '✓ Copied!' : 'Copy'}</button>}
             </div>
-            <div style={{ flex: 1, backgroundColor: '#0a0a0b', borderRadius: '8px', border: '1px solid #27272a', padding: '16px', minHeight: '400px', overflow: 'auto' }}>
-              {isLoading ? (<div style={{ color: '#71717a', fontSize: '14px' }}><span style={{ animation: 'pulse 1s infinite' }}>Generating personalized response...</span></div>) : refinedResponse ? (<div style={{ fontSize: '14px', lineHeight: '1.7', whiteSpace: 'pre-wrap', animation: 'slideIn 0.3s ease' }}>{refinedResponse}</div>) : (<div style={{ color: '#52525b', fontSize: '14px', fontStyle: 'italic' }}>Select a macro and add ticket details, then click "Refine Macro" to generate a personalized response.</div>)}
+            <div style={{ flex: 1, backgroundColor: '#0a0a0b', borderRadius: '8px', border: '1px solid #27272a', padding: '16px', minHeight: '350px', overflow: 'auto' }}>
+              {isLoading ? (<div style={{ color: '#71717a', fontSize: '14px' }}><span style={{ animation: 'pulse 1s infinite' }}>Generating personalized response...</span></div>) : refinedResponse ? (<div style={{ fontSize: '14px', lineHeight: '1.7', whiteSpace: 'pre-wrap', animation: 'slideIn 0.3s ease' }}>{refinedResponse}</div>) : (<div style={{ color: '#52525b', fontSize: '14px', fontStyle: 'italic' }}>Select a macro and paste Gorgias ticket content, then click "Refine Macro" to generate a personalized response.</div>)}
             </div>
             {currentMacro && (
               <div style={{ marginTop: '16px' }}>
                 <div style={{ fontSize: '11px', color: '#52525b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Current Template</div>
-                <div style={{ backgroundColor: '#0a0a0b', borderRadius: '6px', border: '1px solid #27272a', padding: '12px', fontSize: '11px', fontFamily: "'IBM Plex Mono', monospace", color: '#71717a', maxHeight: '120px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{currentMacro}</div>
+                <div style={{ backgroundColor: '#0a0a0b', borderRadius: '6px', border: '1px solid #27272a', padding: '12px', fontSize: '11px', fontFamily: "'IBM Plex Mono', monospace", color: '#71717a', maxHeight: '100px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>{currentMacro}</div>
               </div>
             )}
           </div>
