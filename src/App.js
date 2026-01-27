@@ -866,12 +866,7 @@ Please refine this macro into a personalized, ready-to-send response.`;
     try {
       const response = await fetch('/api/refine', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': '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',
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-          },
+        headers: { 'Content-Type': 'application/json' }
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 1000,
