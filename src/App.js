@@ -20,6 +20,134 @@ Best regards,
 {{agent.first_name}}
 Customer Care Specialist`
   },
+  {
+    id: 'product_window_cleaner_water_tank',
+    name: 'Window Cleaner - Water Tank',
+    category: 'Product Issues',
+    template: `Hi {{customer.first_name}},
+
+Thank you for reaching out. I completely understand why this might be confusing, and I'm happy to clarify.
+
+The window cleaner you received is one of our earlier models and does not include a built-in water tank. With this version, the cleaning solution is applied directly to the cleaning pads before use, which still allows the robot to move smoothly and clean effectively.
+
+If you're happy to keep this model, we can offer a 20% so you can keep the window cleaner at a reduced cost.
+
+Alternatively, we do have a newer model with a built-in water tank, which may be a better fit for your needs, and I'd be more than happy to process a replacement for you right away.
+
+Just let me know which option works best for you.
+
+Best regards,
+{{agent.first_name}}
+Customer Care Specialist`
+  },
+  {
+    id: 'product_trail_camera_1_camera',
+    name: 'Trail Camera - Only 1 Camera in Order',
+    category: 'Product Issues',
+    template: `Hi {{customer.first_name}},
+
+I've checked your order and can confirm that it includes 1 WILDPRO trail camera. Please note that SD cards are only included with orders of 2 or more WILDPRO units, so an SD card is not included with this purchase.
+
+That said, we're happy to offer you a 15% partial refund so you can purchase an SD card locally at your convenience.
+
+Please let us know if this works for you and we will process it right away.
+
+Best regards,
+{{agent.first_name}}
+Customer Care Specialist`
+  },
+  {
+    id: 'product_dashcam_suction_cup',
+    name: 'Dashcam - Suction Cup Inquiry',
+    category: 'Product Issues',
+    template: `Hi {{customer.first_name}},
+
+Thanks for reaching out!
+
+Our team is also updating the listing to make this clearer for everyone.
+
+If you have any questions or need a hand with setup, feel free to let us know and we're happy to help!
+
+Best regards,
+{{agent.first_name}}
+Customer Care Specialist`
+  },
+  {
+    id: 'product_mivo_brand_inquiry',
+    name: 'MIVO Brand Inquiry',
+    category: 'Product Issues',
+    template: `Hi {{customer.first_name}},
+
+Thank you for your message. I completely understand your frustration and can see why receiving a dashcam with the Osmo branding instead of the Mivo Dashcam Pro would be surprising.
+
+We recently rebranded from Osmo to Mivo, and while the packaging shows the old brand, the dashcam inside is the latest model with all the features of the Mivo Dashcam Pro, including 4K recording, collision detection, Night Vision, and a dedicated app. The product itself meets the same specifications you expected.
+
+To make this right, we'd like to offer you 20% off your purchase so you can try the upgraded model at a discounted price. We hope this helps restore your confidence in our product and brand.
+
+We value your feedback and your satisfaction is very important to us. Please let us know how you would like to proceed.
+
+Best regards,
+{{agent.first_name}}
+Customer Care Specialist`
+  },
+  {
+    id: 'product_robot_vacuum_carpets',
+    name: 'Robot Vacuum - Doesn\'t Work on Carpets',
+    category: 'Product Issues',
+    template: `Hi {{customer.first_name}},
+
+Thank you for explaining the issue.
+
+Our robot vacuum is designed to work best on hard floors such as tiles, wood, and laminate. It can operate on low-pile carpets, but it may struggle on thick or high-pile carpets, as the longer fibers can create resistance and affect movement and suction. This is a known limitation rather than a defect.
+
+If your carpet is low-pile, you may want to try setting the vacuum to its highest suction mode and checking that the brush and wheels are clear of debris, as this may improve performance.
+
+If the vacuum isn't the right fit for your carpeted areas, we understand. If you're open to keeping it for use on hard floors, we can offer a 30% refund to help resolve this.
+
+Please let me know how you'd like to proceed, and I'll be glad to help.
+
+Best regards,
+{{agent.first_name}}
+Customer Care Specialist`
+  },
+  {
+    id: 'product_dashcam_not_as_described',
+    name: 'Dashcam - Item Not as Described',
+    category: 'Product Issues',
+    template: `Hi {{customer.first_name}},
+
+Thank you for your message and the photos. We understand how upsetting it can be to receive a product that looks different than expected, and we appreciate you bringing this to our attention.
+
+We have carefully reviewed your order details along with the photos you provided and can confirm that the device you received is the Osmo Dashcam Pro.
+
+This model is a 4K ultra-high-resolution dashcam, designed to capture clear details day and night. It also includes collision detection, which automatically locks and saves important footage if an impact is detected. On top of that, it has app support, allowing you to view both live footage and saved recordings directly on your phone, making it very easy to use day to day.
+
+Many customers who had similar concerns found that once they used the dashcam, the video quality exceeded their expectations, especially for night driving and longer trips.
+
+To help give you extra confidence, we're happy to offer a 15% partial refund if you choose to keep the dashcam, so you can continue using it while feeling more comfortable with your purchase.
+
+Please let me know if you'd like to proceed with this option.
+
+Best regards,
+{{agent.first_name}}
+Customer Care Specialist`
+  },
+  {
+    id: 'product_window_robot_missing_pads',
+    name: 'Window Robot Cleaner - Missing Cleaning Pads',
+    category: 'Product Issues',
+    template: `Hi {{customer.first_name}},
+
+Thank you for the photo. I can see that your RoboClean actually comes with 2 cleaning pads already included - those are the standard pads that work with the device, so nothing is missing there.
+
+Regarding the cleaning liquid, I apologize but that item is currently out of stock. To make this right, I'd like to offer you a 20% partial refund so you can purchase a suitable cleaning agent locally. This will likely be more convenient for you anyway and avoid any further shipping delays.
+
+Would this work for you? I can process the refund right away once you confirm.
+
+Best regards,
+{{agent.first_name}}
+Customer Care Specialist`
+  },
   // RETURN MACROS
   {
     id: 'return_ask_reason',
