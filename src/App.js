@@ -1,6 +1,26 @@
 import React, { useState } from 'react';
 
 const MACRO_LIBRARY = [
+  // PRODUCT ISSUE MACROS
+  {
+    id: 'product_vacuum_missing_attachments',
+    name: 'Vacuum Cleaner Missing Attachments',
+    category: 'Product Issues',
+    template: `Hi {{customer.first_name}},
+
+I completely understand how this could be confusing.
+
+I'd like to clarify that while the photo shows three components, only two of them are vacuum attachments. The third item is the main head unit, which the attachments connect to and is not considered a separate attachment on its own.
+
+This means your order should include two vacuum attachments plus the main head unit, which matches what's shown in the listing. Nothing is missing from your order.
+
+I hope this clears things up! Please don't hesitate to reach out if you have any further questions.
+
+Best regards,
+{{agent.first_name}}
+Customer Care Specialist`
+  },
+  // RETURN MACROS
   {
     id: 'return_ask_reason',
     name: 'Ask for Return Reason',
