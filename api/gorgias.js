@@ -1,260 +1,251 @@
+const Anthropic = require("@anthropic-ai/sdk").default;
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
 // Simple in-memory cache
-var cache = {};
-var CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const cache = new Map();
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
-module.exports = async function handler(req, res) {
-  const ticketId = req.query.ticket_id || '';
+module.exports = async (req, res) => {
+  // Set CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  const ticketId = req.query.ticket_id;
 
   if (!ticketId) {
-    return res.status(200).json({
-      status: "Open a ticket",
-      category: "-",
-      customer: "-",
-      refined_reply: "Waiting for ticket data...",
-      option1_reply: "-",
-      option2_reply: "-",
-      option3_reply: "-"
-    });
+    return res.status(400).json({ error: "Missing ticket_id" });
   }
 
   // Check cache first
-  var cached = cache[ticketId];
-  if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+  const cached = cache.get(ticketId);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
     return res.status(200).json(cached.data);
   }
 
-  const domain = process.env.GORGIAS_DOMAIN || 'osmozone.gorgias.com';
-  const gorgiasEmail = process.env.GORGIAS_EMAIL;
-  const gorgiasKey = process.env.GORGIAS_API_KEY;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-
-  if (!gorgiasEmail || !gorgiasKey || !anthropicKey) {
-    return res.status(200).json({
-      status: "Missing config",
-      category: "-",
-      customer: "-",
-      refined_reply: "Environment variables not set.",
-      option1_reply: "-",
-      option2_reply: "-",
-      option3_reply: "-"
-    });
-  }
-
-  const gorgiasAuth = Buffer.from(gorgiasEmail + ':' + gorgiasKey).toString('base64');
-
   try {
-    // Fetch ticket data
-    var ticketRes = await fetch('https://' + domain + '/api/tickets/' + ticketId, {
-      headers: { 'Authorization': 'Basic ' + gorgiasAuth }
-    });
+    // Fetch ticket from Gorgias
+    const domain = process.env.GORGIAS_DOMAIN;
+    const email = process.env.GORGIAS_EMAIL;
+    const apiKey = process.env.GORGIAS_API_KEY;
 
-    if (!ticketRes.ok) {
-      if (ticketRes.status === 429) {
+    const authHeader = Buffer.from(`${email}:${apiKey}`).toString("base64");
+
+    const ticketResponse = await fetch(
+      `https://${domain}/api/tickets/${ticketId}`,
+      {
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!ticketResponse.ok) {
+      if (ticketResponse.status === 429) {
+        // Don't cache rate limit errors
         return res.status(200).json({
           status: "Rate limited - wait a moment",
           category: "-",
           customer: "-",
-          refined_reply: "Too many requests. Please wait.",
+          order_number: "-",
+          refined_reply: "API rate limited. Please wait a minute and refresh.",
           option1_reply: "-",
           option2_reply: "-",
-          option3_reply: "-"
+          option3_reply: "-",
         });
       }
-      return res.status(200).json({
-        status: "Could not load ticket",
-        category: "-",
-        customer: "-",
-        refined_reply: "Unable to fetch ticket.",
-        option1_reply: "-",
-        option2_reply: "-",
-        option3_reply: "-"
-      });
+      throw new Error(`Gorgias API error: ${ticketResponse.status}`);
     }
 
-    var ticket = await ticketRes.json();
-    var customerName = ticket.customer?.firstname || ticket.customer?.name?.split(' ')[0] || 'there';
-    var customerEmail = ticket.customer?.email || '';
+    const ticket = await ticketResponse.json();
 
-    // Fetch messages
-    var messagesRes = await fetch('https://' + domain + '/api/tickets/' + ticketId + '/messages?limit=5', {
-      headers: { 'Authorization': 'Basic ' + gorgiasAuth }
-    });
+    // Get customer name
+    const customerName = ticket.customer?.firstname || ticket.customer?.name || "Customer";
 
-    var messages = [];
-    if (messagesRes.ok) {
-      var msgData = await messagesRes.json();
-      messages = (msgData.data || []).filter(function(m) {
-        return m.source && m.source.from && m.source.from.is_customer;
-      }).map(function(m) {
-        return m.body_text || m.stripped_text || '';
-      }).slice(0, 3);
+    // Get message content
+    const messagesResponse = await fetch(
+      `https://${domain}/api/tickets/${ticketId}/messages`,
+      {
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    let messageText = "";
+    let subject = ticket.subject || "";
+
+    if (messagesResponse.ok) {
+      const messagesData = await messagesResponse.json();
+      const customerMessages = messagesData.data?.filter((m) => !m.from_agent) || [];
+      if (customerMessages.length > 0) {
+        const latestMessage = customerMessages[customerMessages.length - 1];
+        messageText = latestMessage.body_text || latestMessage.body_html?.replace(/<[^>]*>/g, " ") || "";
+      }
     }
 
-    var ticketContent = messages.join('\n');
-    var subject = ticket.subject || '';
+    // Detect category
+    const content = (subject + " " + messageText).toLowerCase();
+    let category = "General";
+    if (content.includes("track") || content.includes("shipping") || content.includes("where") || content.includes("delivery") || content.includes("status")) {
+      category = "WISMO";
+    } else if (content.includes("return") || content.includes("refund")) {
+      category = "Return";
+    } else if (content.includes("cancel")) {
+      category = "Cancellation";
+    } else if (content.includes("subscription")) {
+      category = "Subscription";
+    } else if (content.includes("broken") || content.includes("damaged") || content.includes("not working") || content.includes("defective") || content.includes("issue") || content.includes("problem")) {
+      category = "Product Issue";
+    }
 
-    // Check for Shopify order data
-    var hasOrder = false;
-    var orderInfo = '';
-    var orderNumber = '';
-    var orderStatus = '';
-    var trackingNumber = '';
-    var trackingUrl = '';
-    var shippingAddress = '';
-    var orderItems = [];
-
-    // Check ticket meta for Shopify data
-    if (ticket.meta && ticket.meta.data) {
-      var meta = ticket.meta.data;
+    // Extract Shopify order data from customer.integrations
+    let orderContext = "";
+    let orderNumber = "-";
+    
+    const integrations = ticket.customer?.integrations || {};
+    let allOrders = [];
+    
+    // Loop through all integrations to find Shopify orders
+    for (const [integrationId, integrationData] of Object.entries(integrations)) {
+      if (integrationData.__integration_type__ === "shopify" && integrationData.orders) {
+        allOrders = allOrders.concat(integrationData.orders);
+      }
+    }
+    
+    if (allOrders.length > 0) {
+      // Sort by created_at descending to get most recent first
+      allOrders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       
-      // Check for orders in meta
-      if (meta.orders && meta.orders.length > 0) {
-        hasOrder = true;
-        var order = meta.orders[0];
-        orderNumber = order.name || order.order_number || '';
-        orderStatus = order.fulfillment_status || order.financial_status || '';
+      // Build order context for all orders (max 5)
+      const ordersToShow = allOrders.slice(0, 5);
+      
+      orderContext = "\n\nCUSTOMER'S SHOPIFY ORDERS:\n";
+      
+      ordersToShow.forEach((order, index) => {
+        const orderName = order.name || `#${order.order_number}`;
+        const fulfillmentStatus = order.fulfillment_status || "unfulfilled";
+        const financialStatus = order.financial_status || "unknown";
         
+        // Get tracking info
+        let trackingInfo = "No tracking yet";
         if (order.fulfillments && order.fulfillments.length > 0) {
-          var fulfillment = order.fulfillments[0];
-          trackingNumber = fulfillment.tracking_number || '';
-          trackingUrl = fulfillment.tracking_url || '';
+          const fulfillment = order.fulfillments[0];
+          if (fulfillment.tracking_number) {
+            trackingInfo = `Tracking: ${fulfillment.tracking_number}`;
+            if (fulfillment.tracking_url) {
+              trackingInfo += ` (${fulfillment.tracking_url})`;
+            }
+          }
         }
         
+        // Get shipping address
+        let shippingAddress = "No address";
         if (order.shipping_address) {
-          var addr = order.shipping_address;
-          shippingAddress = [addr.city, addr.province, addr.country].filter(Boolean).join(', ');
+          const addr = order.shipping_address;
+          shippingAddress = [addr.city, addr.province, addr.country].filter(Boolean).join(", ");
         }
         
-        if (order.line_items) {
-          orderItems = order.line_items.map(function(item) {
-            return item.quantity + 'x ' + item.name;
-          });
+        // Get line items
+        let items = "Unknown items";
+        if (order.line_items && order.line_items.length > 0) {
+          items = order.line_items.map(item => `${item.quantity}x ${item.name || item.title}`).join(", ");
         }
         
-        orderInfo = 'Order ' + orderNumber + ' - Status: ' + orderStatus;
-        if (trackingNumber) orderInfo += ' - Tracking: ' + trackingNumber;
-        if (orderItems.length > 0) orderInfo += ' - Items: ' + orderItems.join(', ');
-      }
+        orderContext += `\nOrder ${index + 1}: ${orderName}
+- Status: ${fulfillmentStatus} (Payment: ${financialStatus})
+- ${trackingInfo}
+- Ship to: ${shippingAddress}
+- Items: ${items}
+- Order date: ${order.created_at}
+`;
+        
+        // Set order number for display (use most recent)
+        if (index === 0) {
+          orderNumber = orderName;
+        }
+      });
+      
+      orderContext += "\nIMPORTANT: You have access to the customer's order information above. DO NOT ask them for order details you already have. Use this information to provide a helpful, specific response.";
     }
 
-    // Also check customer data for orders
-    if (!hasOrder && ticket.customer?.meta?.data?.orders) {
-      var custOrders = ticket.customer.meta.data.orders;
-      if (custOrders.length > 0) {
-        hasOrder = true;
-        var order = custOrders[0];
-        orderNumber = order.name || order.order_number || '';
-        orderStatus = order.fulfillment_status || '';
-        orderInfo = 'Order ' + orderNumber + ' - Status: ' + orderStatus;
-      }
-    }
-
-    // Determine category
-    var category = 'General';
-    var lowerContent = (subject + ' ' + ticketContent).toLowerCase();
-    if (lowerContent.indexOf('track') >= 0 || lowerContent.indexOf('shipping') >= 0 || lowerContent.indexOf('where') >= 0 || lowerContent.indexOf('delivery') >= 0) {
-      category = 'WISMO';
-    } else if (lowerContent.indexOf('return') >= 0 || lowerContent.indexOf('refund') >= 0) {
-      category = 'Return';
-    } else if (lowerContent.indexOf('cancel') >= 0) {
-      category = 'Cancellation';
-    } else if (lowerContent.indexOf('subscription') >= 0) {
-      category = 'Subscription';
-    } else if (lowerContent.indexOf('broken') >= 0 || lowerContent.indexOf('damaged') >= 0 || lowerContent.indexOf('not working') >= 0 || lowerContent.indexOf('defective') >= 0) {
-      category = 'Product Issue';
-    }
-
-    // Build prompt with order context
-    var orderContext = '';
-    if (hasOrder) {
-      orderContext = `
-ORDER INFORMATION (already available - DO NOT ask for order details):
-- Order Number: ${orderNumber}
-- Status: ${orderStatus}
-${trackingNumber ? '- Tracking: ' + trackingNumber : ''}
-${trackingUrl ? '- Tracking URL: ' + trackingUrl : ''}
-${shippingAddress ? '- Shipping to: ' + shippingAddress : ''}
-${orderItems.length > 0 ? '- Items: ' + orderItems.join(', ') : ''}
-
-IMPORTANT: Since we already have the order information, reference it directly in your reply. Do NOT ask the customer for their order number.`;
-    } else {
-      orderContext = `
-NO ORDER FOUND: There is no order associated with this ticket yet. If relevant, you may ask for the order number.`;
-    }
-
-    var prompt = `You are a customer support agent for OSMO (consumer electronics: dashcams, robot vacuums, air fryers, etc).
-
-Write ONE helpful reply for this ticket.
+    // Generate reply with Claude
+    const prompt = `You are a customer support agent for OSMO, a consumer electronics company. Generate a helpful reply to this customer inquiry.
 
 CUSTOMER: ${customerName}
 SUBJECT: ${subject}
-MESSAGE: ${ticketContent}
-${orderContext}
+MESSAGE: ${messageText}
+CATEGORY: ${category}${orderContext}
 
 STYLE GUIDELINES:
 - Be direct and get to the point quickly
 - Focus on solutions, not apologies
 - Sound natural and human, not robotic
-- Keep it concise (under 100 words)
-- Use simple, clear language
 - Only apologize once if truly necessary, then move to the solution
-- End with "Best regards" (no agent name)
-- If order info is available, use it. Don't ask for info you already have.
+- Keep response under 80 words
+- If you have order info above, USE IT - don't ask for details you already have
+- If tracking exists and customer asks about delivery, give them the tracking info
 
-Write the reply now:`;
+BAD EXAMPLE (too apologetic):
+"I'm so sorry to hear you're experiencing this issue. I sincerely apologize for any inconvenience this has caused. I completely understand how frustrating this must be for you. I'm truly sorry..."
 
-    var claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        messages: [{ role: 'user', content: prompt }]
-      })
+GOOD EXAMPLE (direct and helpful):
+"Thanks for reaching out! Your order OSNL50482 shipped yesterday and is on its way. Here's your tracking link: [link]. It should arrive within 3-5 business days. Let me know if you need anything else!"
+
+PRODUCT KNOWLEDGE:
+- Dashcam Pro: 4K recording, uses Verdure app for playback
+- Robot Window Cleaner: Safety rope must be attached before use
+- WildPro Trail Camera: SD card not included with single orders
+- Robot Vacuum: Not suitable for thick carpets (>12mm pile)
+- 4G Pet GPS Tracker: Uses 365GPS app
+- VideoBell Pro: Uses iCam365 app
+
+Generate ONE concise, helpful reply:`;
+
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 300,
+      messages: [{ role: "user", content: prompt }],
     });
 
-    var refinedReply = 'Hi ' + customerName + ', thanks for reaching out. Let me help you with this.';
-    
-    if (claudeRes.ok) {
-      var claudeData = await claudeRes.json();
-      refinedReply = claudeData.content?.[0]?.text || refinedReply;
-    }
+    const reply = response.content[0].text.trim();
 
-    var result = {
-      status: hasOrder ? "Ready (Order found)" : "Ready",
+    const result = {
+      status: allOrders.length > 0 ? "Ready (Order found)" : "Ready",
       category: category,
       customer: customerName,
-      refined_reply: refinedReply,
-      order_number: orderNumber || "-",
+      order_number: orderNumber,
+      refined_reply: reply,
       option1_reply: "-",
-      option2_reply: "-", 
-      option3_reply: "-"
+      option2_reply: "-",
+      option3_reply: "-",
     };
 
     // Cache the result
-    cache[ticketId] = {
-      timestamp: Date.now(),
-      data: result
-    };
+    cache.set(ticketId, { data: result, timestamp: Date.now() });
 
     return res.status(200).json(result);
-
-  } catch (err) {
+  } catch (error) {
+    console.error("Error:", error);
+    // Don't cache errors
     return res.status(200).json({
       status: "Error",
       category: "-",
       customer: "-",
-      refined_reply: "Something went wrong: " + err.message,
+      order_number: "-",
+      refined_reply: `Error: ${error.message}`,
       option1_reply: "-",
       option2_reply: "-",
-      option3_reply: "-"
+      option3_reply: "-",
     });
   }
 };
