@@ -3,20 +3,15 @@
 export default function handler(req, res) {
   const ticketId = req.query.ticket_id || '';
 
-  // Return JSON data that Gorgias widget expects
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // Return widget data
+  // Return the iframe_url that Gorgias frame widget expects
   res.status(200).json({
-    status: "✨ Ready",
-    instructions: "Click below to open Macro Refiner",
-    iframe_url: `https://macro-refiner.vercel.app/gorgias-sidebar?ticket_id=${ticketId}`,
-    ticket_id: ticketId
+    iframe_url: `https://macro-refiner.vercel.app/gorgias-sidebar?ticket_id=${ticketId}`
   });
 }
