@@ -20,6 +20,12 @@ module.exports = async function handler(req, res) {
   const gorgiasKey = process.env.GORGIAS_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
+  console.log('Ticket ID:', ticketId);
+  console.log('Domain:', domain);
+  console.log('Has email:', !!gorgiasEmail);
+  console.log('Has gorgias key:', !!gorgiasKey);
+  console.log('Has anthropic key:', !!anthropicKey);
+
   if (!gorgiasEmail || !gorgiasKey || !anthropicKey) {
     return res.status(200).json({
       status: "Missing config",
@@ -34,16 +40,22 @@ module.exports = async function handler(req, res) {
   const gorgiasAuth = Buffer.from(gorgiasEmail + ':' + gorgiasKey).toString('base64');
 
   try {
+    console.log('Fetching ticket from:', 'https://' + domain + '/api/tickets/' + ticketId);
+    
     var ticketRes = await fetch('https://' + domain + '/api/tickets/' + ticketId, {
       headers: { 'Authorization': 'Basic ' + gorgiasAuth }
     });
 
+    console.log('Ticket response status:', ticketRes.status);
+
     if (!ticketRes.ok) {
+      var errorText = await ticketRes.text();
+      console.log('Ticket error:', errorText);
       return res.status(200).json({
         status: "Could not load ticket",
         category: "-",
         customer: "-",
-        option1_reply: "Unable to fetch ticket data.",
+        option1_reply: "Unable to fetch ticket data. Status: " + ticketRes.status,
         option2_reply: "-",
         option3_reply: "-"
       });
@@ -127,6 +139,7 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (err) {
+    console.log('Error:', err.message);
     return res.status(200).json({
       status: "Error",
       category: "-",
