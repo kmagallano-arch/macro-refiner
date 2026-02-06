@@ -1,3 +1,7 @@
+// Simple in-memory cache
+var cache = {};
+var CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
 module.exports = async function handler(req, res) {
   const ticketId = req.query.ticket_id || '';
 
@@ -15,16 +19,17 @@ module.exports = async function handler(req, res) {
     });
   }
 
+  // Check cache first
+  var cached = cache[ticketId];
+  if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+    console.log('Returning cached response for ticket:', ticketId);
+    return res.status(200).json(cached.data);
+  }
+
   const domain = process.env.GORGIAS_DOMAIN || 'osmozone.gorgias.com';
   const gorgiasEmail = process.env.GORGIAS_EMAIL;
   const gorgiasKey = process.env.GORGIAS_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
-
-  console.log('Ticket ID:', ticketId);
-  console.log('Domain:', domain);
-  console.log('Has email:', !!gorgiasEmail);
-  console.log('Has gorgias key:', !!gorgiasKey);
-  console.log('Has anthropic key:', !!anthropicKey);
 
   if (!gorgiasEmail || !gorgiasKey || !anthropicKey) {
     return res.status(200).json({
@@ -40,22 +45,27 @@ module.exports = async function handler(req, res) {
   const gorgiasAuth = Buffer.from(gorgiasEmail + ':' + gorgiasKey).toString('base64');
 
   try {
-    console.log('Fetching ticket from:', 'https://' + domain + '/api/tickets/' + ticketId);
-    
     var ticketRes = await fetch('https://' + domain + '/api/tickets/' + ticketId, {
       headers: { 'Authorization': 'Basic ' + gorgiasAuth }
     });
 
-    console.log('Ticket response status:', ticketRes.status);
-
     if (!ticketRes.ok) {
-      var errorText = await ticketRes.text();
-      console.log('Ticket error:', errorText);
+      // If rate limited, return a friendly message (don't cache errors)
+      if (ticketRes.status === 429) {
+        return res.status(200).json({
+          status: "Rate limited",
+          category: "-",
+          customer: "-",
+          option1_reply: "Too many requests. Please wait a moment and try again.",
+          option2_reply: "-",
+          option3_reply: "-"
+        });
+      }
       return res.status(200).json({
         status: "Could not load ticket",
         category: "-",
         customer: "-",
-        option1_reply: "Unable to fetch ticket data. Status: " + ticketRes.status,
+        option1_reply: "Unable to fetch ticket data.",
         option2_reply: "-",
         option3_reply: "-"
       });
@@ -95,7 +105,7 @@ module.exports = async function handler(req, res) {
       category = 'Product Issue';
     }
 
-    var prompt = 'You are a customer support agent. Generate 3 short reply options for this ticket.\n\nCustomer: ' + customerName + '\nSubject: ' + subject + '\nMessage: ' + ticketContent + '\n\nGenerate exactly 3 replies:\n1. EMPATHETIC - warm and understanding\n2. SOLUTION - direct and action-focused\n3. QUESTION - ask for more info\n\nFormat:\n===1===\n[reply]\n===2===\n[reply]\n===3===\n[reply]\n\nKeep each under 80 words. End with Best regards.';
+    var prompt = 'You are a customer support agent for OSMO products. Generate 3 short reply options for this ticket.\n\nCustomer: ' + customerName + '\nSubject: ' + subject + '\nMessage: ' + ticketContent + '\n\nGenerate exactly 3 replies:\n1. EMPATHETIC - warm and understanding\n2. SOLUTION - direct and action-focused\n3. QUESTION - ask for more info\n\nFormat:\n===1===\n[reply]\n===2===\n[reply]\n===3===\n[reply]\n\nKeep each under 80 words. End with Best regards.';
 
     var claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -119,27 +129,36 @@ module.exports = async function handler(req, res) {
       var match2 = text.match(/===2===([\s\S]*?)(?====3===|$)/);
       var match3 = text.match(/===3===([\s\S]*?)$/);
 
-      return res.status(200).json({
+      var result = {
         status: "3 Replies Ready",
         category: category,
         customer: customerName,
         option1_reply: match1 ? match1[1].trim() : 'Could not generate.',
         option2_reply: match2 ? match2[1].trim() : 'Could not generate.',
         option3_reply: match3 ? match3[1].trim() : 'Could not generate.'
-      });
+      };
+
+      // Cache the successful result
+      cache[ticketId] = {
+        timestamp: Date.now(),
+        data: result
+      };
+
+      return res.status(200).json(result);
     }
 
-    return res.status(200).json({
+    var fallback = {
       status: "AI unavailable",
       category: category,
       customer: customerName,
       option1_reply: 'Hi ' + customerName + ', thank you for reaching out. I would be happy to help you with this.',
       option2_reply: '-',
       option3_reply: '-'
-    });
+    };
+
+    return res.status(200).json(fallback);
 
   } catch (err) {
-    console.log('Error:', err.message);
     return res.status(200).json({
       status: "Error",
       category: "-",
