@@ -146,6 +146,7 @@ STYLE RULES:
 - Start with "Hi {{ticket.customer.firstname}}," (this is a Gorgias placeholder that will auto-fill)
 - Always end with "Best regards,\n{{current_user.firstname}}" (this is a Gorgias placeholder for agent name)
 - DO NOT use the actual customer name "${customerName}" - use the placeholder {{ticket.customer.firstname}} instead
+- NEVER proactively say that we can help with cancellation or return
 
 EMAIL FORMAT (use line breaks between sections):
 Hi {{ticket.customer.firstname}},
