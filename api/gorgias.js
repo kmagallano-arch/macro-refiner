@@ -4,8 +4,6 @@ var CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
 module.exports = async function handler(req, res) {
   const ticketId = req.query.ticket_id || '';
-  const action = req.query.action || 'suggestions'; // 'suggestions' or 'refine'
-  const macroId = req.query.macro_id || '';
 
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -23,8 +21,7 @@ module.exports = async function handler(req, res) {
   }
 
   // Check cache first
-  var cacheKey = ticketId + '_' + action + '_' + macroId;
-  var cached = cache[cacheKey];
+  var cached = cache[ticketId];
   if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
     return res.status(200).json(cached.data);
   }
@@ -49,6 +46,7 @@ module.exports = async function handler(req, res) {
   const gorgiasAuth = Buffer.from(gorgiasEmail + ':' + gorgiasKey).toString('base64');
 
   try {
+    // Fetch ticket data
     var ticketRes = await fetch('https://' + domain + '/api/tickets/' + ticketId, {
       headers: { 'Authorization': 'Basic ' + gorgiasAuth }
     });
@@ -78,7 +76,9 @@ module.exports = async function handler(req, res) {
 
     var ticket = await ticketRes.json();
     var customerName = ticket.customer?.firstname || ticket.customer?.name?.split(' ')[0] || 'there';
+    var customerEmail = ticket.customer?.email || '';
 
+    // Fetch messages
     var messagesRes = await fetch('https://' + domain + '/api/tickets/' + ticketId + '/messages?limit=5', {
       headers: { 'Authorization': 'Basic ' + gorgiasAuth }
     });
@@ -96,6 +96,63 @@ module.exports = async function handler(req, res) {
     var ticketContent = messages.join('\n');
     var subject = ticket.subject || '';
 
+    // Check for Shopify order data
+    var hasOrder = false;
+    var orderInfo = '';
+    var orderNumber = '';
+    var orderStatus = '';
+    var trackingNumber = '';
+    var trackingUrl = '';
+    var shippingAddress = '';
+    var orderItems = [];
+
+    // Check ticket meta for Shopify data
+    if (ticket.meta && ticket.meta.data) {
+      var meta = ticket.meta.data;
+      
+      // Check for orders in meta
+      if (meta.orders && meta.orders.length > 0) {
+        hasOrder = true;
+        var order = meta.orders[0];
+        orderNumber = order.name || order.order_number || '';
+        orderStatus = order.fulfillment_status || order.financial_status || '';
+        
+        if (order.fulfillments && order.fulfillments.length > 0) {
+          var fulfillment = order.fulfillments[0];
+          trackingNumber = fulfillment.tracking_number || '';
+          trackingUrl = fulfillment.tracking_url || '';
+        }
+        
+        if (order.shipping_address) {
+          var addr = order.shipping_address;
+          shippingAddress = [addr.city, addr.province, addr.country].filter(Boolean).join(', ');
+        }
+        
+        if (order.line_items) {
+          orderItems = order.line_items.map(function(item) {
+            return item.quantity + 'x ' + item.name;
+          });
+        }
+        
+        orderInfo = 'Order ' + orderNumber + ' - Status: ' + orderStatus;
+        if (trackingNumber) orderInfo += ' - Tracking: ' + trackingNumber;
+        if (orderItems.length > 0) orderInfo += ' - Items: ' + orderItems.join(', ');
+      }
+    }
+
+    // Also check customer data for orders
+    if (!hasOrder && ticket.customer?.meta?.data?.orders) {
+      var custOrders = ticket.customer.meta.data.orders;
+      if (custOrders.length > 0) {
+        hasOrder = true;
+        var order = custOrders[0];
+        orderNumber = order.name || order.order_number || '';
+        orderStatus = order.fulfillment_status || '';
+        orderInfo = 'Order ' + orderNumber + ' - Status: ' + orderStatus;
+      }
+    }
+
+    // Determine category
     var category = 'General';
     var lowerContent = (subject + ' ' + ticketContent).toLowerCase();
     if (lowerContent.indexOf('track') >= 0 || lowerContent.indexOf('shipping') >= 0 || lowerContent.indexOf('where') >= 0 || lowerContent.indexOf('delivery') >= 0) {
@@ -110,7 +167,24 @@ module.exports = async function handler(req, res) {
       category = 'Product Issue';
     }
 
-    // Generate refined reply based on ticket
+    // Build prompt with order context
+    var orderContext = '';
+    if (hasOrder) {
+      orderContext = `
+ORDER INFORMATION (already available - DO NOT ask for order details):
+- Order Number: ${orderNumber}
+- Status: ${orderStatus}
+${trackingNumber ? '- Tracking: ' + trackingNumber : ''}
+${trackingUrl ? '- Tracking URL: ' + trackingUrl : ''}
+${shippingAddress ? '- Shipping to: ' + shippingAddress : ''}
+${orderItems.length > 0 ? '- Items: ' + orderItems.join(', ') : ''}
+
+IMPORTANT: Since we already have the order information, reference it directly in your reply. Do NOT ask the customer for their order number.`;
+    } else {
+      orderContext = `
+NO ORDER FOUND: There is no order associated with this ticket yet. If relevant, you may ask for the order number.`;
+    }
+
     var prompt = `You are a customer support agent for OSMO (consumer electronics: dashcams, robot vacuums, air fryers, etc).
 
 Write ONE helpful reply for this ticket.
@@ -118,6 +192,7 @@ Write ONE helpful reply for this ticket.
 CUSTOMER: ${customerName}
 SUBJECT: ${subject}
 MESSAGE: ${ticketContent}
+${orderContext}
 
 STYLE GUIDELINES:
 - Be direct and get to the point quickly
@@ -127,12 +202,7 @@ STYLE GUIDELINES:
 - Use simple, clear language
 - Only apologize once if truly necessary, then move to the solution
 - End with "Best regards" (no agent name)
-
-BAD EXAMPLE (too apologetic/robotic):
-"I sincerely apologize for any inconvenience this may have caused. I completely understand your frustration and I want to assure you that we take this matter very seriously..."
-
-GOOD EXAMPLE (direct/helpful):
-"Hi John, I checked your order and it shipped yesterday - here's your tracking link: [link]. It should arrive by Friday. Let me know if you need anything else!"
+- If order info is available, use it. Don't ask for info you already have.
 
 Write the reply now:`;
 
@@ -158,17 +228,18 @@ Write the reply now:`;
     }
 
     var result = {
-      status: "Ready",
+      status: hasOrder ? "Ready (Order found)" : "Ready",
       category: category,
       customer: customerName,
       refined_reply: refinedReply,
+      order_number: orderNumber || "-",
       option1_reply: "-",
       option2_reply: "-", 
       option3_reply: "-"
     };
 
     // Cache the result
-    cache[cacheKey] = {
+    cache[ticketId] = {
       timestamp: Date.now(),
       data: result
     };
