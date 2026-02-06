@@ -144,7 +144,7 @@ STYLE RULES:
 - Keep under 100 words
 - Use order info if available - DO NOT ask for order details you already have
 - Start with "Hi {{ticket.customer.firstname}}," (this is a Gorgias placeholder that will auto-fill)
-- Always end with "Best regards,\n{{ticket.assignee_user.firstname}}" (this is a Gorgias placeholder for agent name)
+- Always end with "Best regards,\n{{current_user.firstname}}" (this is a Gorgias placeholder for agent name)
 - DO NOT use the actual customer name "${customerName}" - use the placeholder {{ticket.customer.firstname}} instead
 
 EMAIL FORMAT (use line breaks between sections):
@@ -157,7 +157,7 @@ Hi {{ticket.customer.firstname}},
 [Optional: Third paragraph - next steps or offer]
 
 Best regards,
-{{ticket.assignee_user.firstname}}
+{{current_user.firstname}}
 
 ESCALATION TRIGGERS (if detected, use escalation macro):
 Chargeback, legal action, lawyer, lawsuit, fraud, police, safety hazard, fire, smoke, overheating, injury, property damage, threats of reviews/social media, unauthorized charges, asking for manager
