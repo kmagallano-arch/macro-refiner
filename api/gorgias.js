@@ -53,23 +53,45 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Detect category
+    // Detect category and check for escalation triggers
     const content = (subject + " " + messageText).toLowerCase();
     let category = "General";
-    if (content.includes("track") || content.includes("shipping") || content.includes("where") || content.includes("delivery")) {
-      category = "WISMO";
-    } else if (content.includes("return") || content.includes("refund")) {
-      category = "Return";
-    } else if (content.includes("cancel")) {
-      category = "Cancellation";
-    } else if (content.includes("subscription")) {
-      category = "Subscription";
+    let needsEscalation = false;
+    
+    // Check escalation triggers first
+    const escalationTriggers = ["chargeback", "legal action", "lawyer", "lawsuit", "fraud", "police", "regulators", "consumer affairs", "fire", "smoke", "overheating", "injury", "damage", "review", "social media", "going public", "unauthorized charge", "manager", "supervisor"];
+    for (var i = 0; i < escalationTriggers.length; i++) {
+      if (content.includes(escalationTriggers[i])) {
+        needsEscalation = true;
+        category = "ESCALATION";
+        break;
+      }
+    }
+    
+    if (!needsEscalation) {
+      if (content.includes("track") || content.includes("shipping") || content.includes("where") || content.includes("delivery") || content.includes("status")) {
+        category = "WISMO";
+      } else if (content.includes("return") || content.includes("refund")) {
+        category = "Return";
+      } else if (content.includes("cancel")) {
+        category = "Cancellation";
+      } else if (content.includes("subscription")) {
+        category = "Subscription";
+      } else if (content.includes("not as described") || content.includes("different") || content.includes("wrong item")) {
+        category = "Item Not As Described";
+      } else if (content.includes("broken") || content.includes("damaged") || content.includes("not working") || content.includes("defective")) {
+        category = "Damaged/Defective";
+      } else if (content.includes("missing") || content.includes("incomplete")) {
+        category = "Missing Items";
+      }
     }
 
     // Find Shopify orders
     let orders = [];
     let orderNumber = "-";
     let orderContext = "";
+    let fulfillmentStatus = "unknown";
+    let productName = "";
     
     const integrations = ticket.customer?.integrations || {};
     for (const key in integrations) {
@@ -86,31 +108,98 @@ module.exports = async (req, res) => {
       
       const order = orders[0];
       orderNumber = order.name || "#" + order.order_number;
-      const status = order.fulfillment_status || "unfulfilled";
+      fulfillmentStatus = order.fulfillment_status || "unfulfilled";
       
       let tracking = "No tracking yet";
       if (order.fulfillments && order.fulfillments.length > 0 && order.fulfillments[0].tracking_number) {
         tracking = "Tracking: " + order.fulfillments[0].tracking_number;
+        if (order.fulfillments[0].tracking_url) {
+          tracking += " | URL: " + order.fulfillments[0].tracking_url;
+        }
       }
       
       let items = "";
       if (order.line_items && order.line_items.length > 0) {
         items = order.line_items.map(function(i) { return i.quantity + "x " + (i.name || i.title); }).join(", ");
+        productName = order.line_items[0].name || order.line_items[0].title || "";
       }
       
-      orderContext = "\n\nORDER INFO (use this - DO NOT ask customer for order details):\n";
+      orderContext = "\n\nORDER INFO:\n";
       orderContext += "Order: " + orderNumber + "\n";
-      orderContext += "Status: " + status + "\n";
+      orderContext += "Status: " + fulfillmentStatus + "\n";
       orderContext += tracking + "\n";
       orderContext += "Items: " + items + "\n";
     }
 
-    // Generate reply
-    const prompt = "You are a support agent for OSMO. Write a short helpful reply (under 80 words). Be direct, not overly apologetic.\n\nCustomer: " + customerName + "\nSubject: " + subject + "\nMessage: " + messageText + orderContext + "\n\nIf you have order info above, USE IT. Do not ask for order number.\n\nReply:";
+    // Build the prompt with macro knowledge
+    const prompt = `You are a customer support agent for OSMO (consumer electronics). Generate a reply based on our standard macros and processes.
+
+CUSTOMER: ${customerName}
+SUBJECT: ${subject}
+MESSAGE: ${messageText}
+CATEGORY: ${category}${orderContext}
+
+STYLE RULES:
+- Be direct, solution-focused, not overly apologetic
+- Keep under 100 words
+- Use order info if available - DO NOT ask for order details you already have
+- Always end with "Best regards, {{agent.first_name}}"
+
+ESCALATION TRIGGERS (if detected, use escalation macro):
+Chargeback, legal action, lawyer, lawsuit, fraud, police, safety hazard, fire, smoke, overheating, injury, property damage, threats of reviews/social media, unauthorized charges, asking for manager
+
+MACRO GUIDELINES BY CATEGORY:
+
+ESCALATION:
+"Thanks for reaching out. I've reviewed your message and, to ensure this is handled appropriately, I'm reassigning your case to our escalation team for further review. They'll follow up with you as soon as possible."
+
+WISMO (Where Is My Order):
+- Unfulfilled <5 days: "Your order is currently being processed before shipping. As soon as it ships, you'll receive a confirmation email with tracking details."
+- Unfulfilled >5 days (upset): Offer 5% partial refund, apologize for delay
+- Shipped on time: Provide tracking link, give delivery estimate
+- Shipped but delayed: Acknowledge delay, provide tracking, reassure
+- No tracking movement >5 days: Escalate with courier, offer reshipment if no update in 48hrs
+- Return to sender: Offer free reshipment, ask to confirm address
+
+RETURNS:
+- First ask for return reason
+- Item not as described: Ask for photo, then offer 15% partial refund to keep item
+- Change of mind: Offer 15% partial refund to keep item
+- Damaged/defective: Ask for photo/video, offer replacement
+- Outside 14-day window: Explain policy, but offer to review case
+
+PARTIAL REFUND ESCALATION:
+- PR1: Offer 30% to keep item
+- PR2: If declined, offer 50% to keep item
+- If still declined: Provide return instructions
+
+CANCELLATIONS:
+- Order not shipped: Offer 15% PR to keep, then 30% if declined
+- Already shipped: Cannot cancel, offer help when it arrives
+- Subscription: Offer 10% discount on next cycle or pause for 6 months
+
+SUBSCRIPTION:
+- Unwanted renewal: Offer 20% PR on latest order, cancel future charges
+- Cancel request: Offer pause or delay options first
+- Already shipped: Cancel subscription, explain current order can't be stopped
+
+PRODUCT-SPECIFIC RESPONSES:
+- Vacuum missing attachments: Clarify that main head unit is not an attachment
+- Window cleaner no water tank: Earlier model, offer 20% PR or replacement with newer model
+- Trail camera 1 unit: SD cards only included with 2+ units, offer 15% PR
+- Robot vacuum on carpet: Works on hard floors/low-pile only, offer 30% PR
+- Dashcam branding (Osmo vs Mivo): Explain rebrand, same product, offer 20% PR
+
+NON-RETURNABLE (hygienic items):
+- Ask more about the issue first
+- If defective: Request video, offer free replacement
+- If just dissatisfied: Offer 15% PR
+
+Generate ONE concise reply following the appropriate macro pattern:`;
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 300,
+      max_tokens: 400,
       messages: [{ role: "user", content: prompt }],
     });
 
