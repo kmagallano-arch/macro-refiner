@@ -148,6 +148,7 @@ STYLE RULES:
 - DO NOT use the actual customer name "${customerName}" - use the placeholder {{ticket.customer.firstname}} instead
 - NEVER proactively say that we can help with cancellation or return
 - Check fulfillment status. If order is delivered, do not provide tracking details.
+- Check if troubleshooting is applicable before offering partial refund.
 - DO NOT describe internal actions or future steps. Respond with confirmed information only. Provide answers and explanations, not promises or intentions.
 
 EMAIL FORMAT (use line breaks between sections):
