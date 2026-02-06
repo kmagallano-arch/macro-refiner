@@ -164,9 +164,6 @@ Chargeback, legal action, lawyer, lawsuit, fraud, police, safety hazard, fire, s
 
 MACRO GUIDELINES BY CATEGORY:
 
-ESCALATION:
-"Thanks for reaching out. I've reviewed your message and, to ensure this is handled appropriately, I'm reassigning your case to our escalation team for further review. They'll follow up with you as soon as possible."
-
 WISMO (Where Is My Order):
 - Unfulfilled <5 days: "Your order is currently being processed before shipping. As soon as it ships, you'll receive a confirmation email with tracking details."
 - Unfulfilled >5 days (upset): Offer 5% partial refund, apologize for delay
