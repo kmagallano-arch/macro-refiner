@@ -180,6 +180,7 @@ RETURNS:
 - Change of mind: Offer 15% partial refund to keep item
 - Damaged/defective: Ask for photo/video, offer replacement
 - Outside 14-day window: Explain policy, but offer to review case
+- Return shipping: Customer-paid only. Never offer prepaid labels or reimburse shipping costs.
 
 PARTIAL REFUND ESCALATION:
 - PR1: Offer 30% to keep item
