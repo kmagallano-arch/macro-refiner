@@ -12,12 +12,4 @@ export default function handler(req, res) {
     option3_reply: "Hi! This is option 3 - the info-gathering response."
   });
 }
-```
 
-**Commit** and wait ~1 minute.
-
----
-
-Then test:
-```
-https://macro-refiner.vercel.app/api/gorgias?ticket_id=123
