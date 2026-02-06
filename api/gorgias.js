@@ -19,15 +19,18 @@ module.exports = async (req, res) => {
   }
 
   const ticketId = req.query.ticket_id;
+  const forceRefresh = req.query.refresh === "true";
 
   if (!ticketId) {
     return res.status(400).json({ error: "Missing ticket_id" });
   }
 
-  // Check cache first
-  const cached = cache.get(ticketId);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return res.status(200).json(cached.data);
+  // Check cache first (unless force refresh)
+  if (!forceRefresh) {
+    const cached = cache.get(ticketId);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      return res.status(200).json(cached.data);
+    }
   }
 
   try {
@@ -50,7 +53,6 @@ module.exports = async (req, res) => {
 
     if (!ticketResponse.ok) {
       if (ticketResponse.status === 429) {
-        // Don't cache rate limit errors
         return res.status(200).json({
           status: "Rate limited - wait a moment",
           category: "-",
@@ -111,25 +113,49 @@ module.exports = async (req, res) => {
     // Extract Shopify order data from customer.integrations
     let orderContext = "";
     let orderNumber = "-";
-    
-    const integrations = ticket.customer?.integrations || {};
     let allOrders = [];
     
-    // Loop through all integrations to find Shopify orders
+    // Method 1: Check customer.integrations (main location)
+    const integrations = ticket.customer?.integrations || {};
     for (const [integrationId, integrationData] of Object.entries(integrations)) {
-      if (integrationData.__integration_type__ === "shopify" && integrationData.orders) {
+      if (integrationData && integrationData.__integration_type__ === "shopify" && Array.isArray(integrationData.orders)) {
         allOrders = allOrders.concat(integrationData.orders);
       }
     }
     
+    // Method 2: Check ticket.integrations as fallback
+    const ticketIntegrations = ticket.integrations || {};
+    for (const [integrationId, integrationData] of Object.entries(ticketIntegrations)) {
+      if (integrationData && integrationData.__integration_type__ === "shopify" && Array.isArray(integrationData.orders)) {
+        allOrders = allOrders.concat(integrationData.orders);
+      }
+    }
+    
+    // Method 3: Check meta.data.orders as another fallback
+    if (ticket.meta?.data?.orders && Array.isArray(ticket.meta.data.orders)) {
+      allOrders = allOrders.concat(ticket.meta.data.orders);
+    }
+    
+    // Deduplicate orders by ID
+    const uniqueOrders = [];
+    const seenIds = new Set();
+    for (const order of allOrders) {
+      const orderId = order.id || order.order_number || order.name;
+      if (!seenIds.has(orderId)) {
+        seenIds.add(orderId);
+        uniqueOrders.push(order);
+      }
+    }
+    allOrders = uniqueOrders;
+    
     if (allOrders.length > 0) {
       // Sort by created_at descending to get most recent first
-      allOrders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      allOrders.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
       
       // Build order context for all orders (max 5)
       const ordersToShow = allOrders.slice(0, 5);
       
-      orderContext = "\n\nCUSTOMER'S SHOPIFY ORDERS:\n";
+      orderContext = "\n\n=== CUSTOMER'S SHOPIFY ORDERS (YOU HAVE THIS INFO - DO NOT ASK FOR IT) ===\n";
       
       ordersToShow.forEach((order, index) => {
         const orderName = order.name || `#${order.order_number}`;
@@ -143,7 +169,7 @@ module.exports = async (req, res) => {
           if (fulfillment.tracking_number) {
             trackingInfo = `Tracking: ${fulfillment.tracking_number}`;
             if (fulfillment.tracking_url) {
-              trackingInfo += ` (${fulfillment.tracking_url})`;
+              trackingInfo += ` | URL: ${fulfillment.tracking_url}`;
             }
           }
         }
@@ -161,12 +187,14 @@ module.exports = async (req, res) => {
           items = order.line_items.map(item => `${item.quantity}x ${item.name || item.title}`).join(", ");
         }
         
-        orderContext += `\nOrder ${index + 1}: ${orderName}
-- Status: ${fulfillmentStatus} (Payment: ${financialStatus})
+        orderContext += `
+ORDER ${index + 1}: ${orderName}
+- Fulfillment: ${fulfillmentStatus}
+- Payment: ${financialStatus}
 - ${trackingInfo}
 - Ship to: ${shippingAddress}
 - Items: ${items}
-- Order date: ${order.created_at}
+- Date: ${order.created_at || "unknown"}
 `;
         
         // Set order number for display (use most recent)
@@ -175,7 +203,15 @@ module.exports = async (req, res) => {
         }
       });
       
-      orderContext += "\nIMPORTANT: You have access to the customer's order information above. DO NOT ask them for order details you already have. Use this information to provide a helpful, specific response.";
+      orderContext += `
+=== END OF ORDER INFO ===
+
+CRITICAL INSTRUCTION: You already have the customer's order information above. 
+DO NOT ask the customer for their order number, email, or any order details.
+USE the order information to give a specific, helpful response.
+If they ask about tracking, give them the tracking info from above.
+If they ask about delivery, tell them the fulfillment status from above.
+`;
     }
 
     // Generate reply with Claude
@@ -192,14 +228,15 @@ STYLE GUIDELINES:
 - Sound natural and human, not robotic
 - Only apologize once if truly necessary, then move to the solution
 - Keep response under 80 words
-- If you have order info above, USE IT - don't ask for details you already have
-- If tracking exists and customer asks about delivery, give them the tracking info
+- NEVER ask for order number or email if you have order info above
+- If tracking exists, provide it directly
+- If order is unfulfilled, explain it's being prepared for shipping
 
-BAD EXAMPLE (too apologetic):
-"I'm so sorry to hear you're experiencing this issue. I sincerely apologize for any inconvenience this has caused. I completely understand how frustrating this must be for you. I'm truly sorry..."
+BAD EXAMPLE (asking for info you already have):
+"I'd be happy to help! Could you please provide your order number so I can look into this for you?"
 
-GOOD EXAMPLE (direct and helpful):
-"Thanks for reaching out! Your order OSNL50482 shipped yesterday and is on its way. Here's your tracking link: [link]. It should arrive within 3-5 business days. Let me know if you need anything else!"
+GOOD EXAMPLE (using the order info):
+"Hi Peter! Your order OSNL50482 is currently being prepared and will ship soon. I'll send you the tracking number as soon as it's dispatched. Is there anything specific about your order I can help with?"
 
 PRODUCT KNOWLEDGE:
 - Dashcam Pro: 4K recording, uses Verdure app for playback
@@ -220,7 +257,7 @@ Generate ONE concise, helpful reply:`;
     const reply = response.content[0].text.trim();
 
     const result = {
-      status: allOrders.length > 0 ? "Ready (Order found)" : "Ready",
+      status: allOrders.length > 0 ? `Ready (${allOrders.length} order${allOrders.length > 1 ? 's' : ''} found)` : "Ready",
       category: category,
       customer: customerName,
       order_number: orderNumber,
@@ -236,7 +273,6 @@ Generate ONE concise, helpful reply:`;
     return res.status(200).json(result);
   } catch (error) {
     console.error("Error:", error);
-    // Don't cache errors
     return res.status(200).json({
       status: "Error",
       category: "-",
