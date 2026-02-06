@@ -144,13 +144,28 @@ STYLE RULES:
 - Keep under 100 words
 - Use order info if available - DO NOT ask for order details you already have
 - Start with "Hi {{ticket.customer.firstname}}," (this is a Gorgias placeholder that will auto-fill)
-- Always end with "Best regards,\n{{current_user.firstname}}" (this is a Gorgias placeholder for agent name)
+- Always end with "Best regards,\n{{ticket.assignee_user.firstname}}" (this is a Gorgias placeholder for agent name)
 - DO NOT use the actual customer name "${customerName}" - use the placeholder {{ticket.customer.firstname}} instead
+
+EMAIL FORMAT (use line breaks between sections):
+Hi {{ticket.customer.firstname}},
+
+[First paragraph - acknowledge the issue]
+
+[Second paragraph - solution/action]
+
+[Optional: Third paragraph - next steps or offer]
+
+Best regards,
+{{ticket.assignee_user.firstname}}
 
 ESCALATION TRIGGERS (if detected, use escalation macro):
 Chargeback, legal action, lawyer, lawsuit, fraud, police, safety hazard, fire, smoke, overheating, injury, property damage, threats of reviews/social media, unauthorized charges, asking for manager
 
 MACRO GUIDELINES BY CATEGORY:
+
+ESCALATION:
+"Thanks for reaching out. I've reviewed your message and, to ensure this is handled appropriately, I'm reassigning your case to our escalation team for further review. They'll follow up with you as soon as possible."
 
 WISMO (Where Is My Order):
 - Unfulfilled <5 days: "Your order is currently being processed before shipping. As soon as it ships, you'll receive a confirmation email with tracking details."
