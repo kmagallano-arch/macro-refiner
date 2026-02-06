@@ -143,7 +143,9 @@ STYLE RULES:
 - Be direct, solution-focused, not overly apologetic
 - Keep under 100 words
 - Use order info if available - DO NOT ask for order details you already have
-- Always end with "Best regards, {{agent.first_name}}"
+- Start with "Hi {{ticket.customer.firstname}}," (this is a Gorgias placeholder that will auto-fill)
+- Always end with "Best regards,\n{{ticket.assignee_user.firstname}}" (this is a Gorgias placeholder for agent name)
+- DO NOT use the actual customer name "${customerName}" - use the placeholder {{ticket.customer.firstname}} instead
 
 ESCALATION TRIGGERS (if detected, use escalation macro):
 Chargeback, legal action, lawyer, lawsuit, fraud, police, safety hazard, fire, smoke, overheating, injury, property damage, threats of reviews/social media, unauthorized charges, asking for manager
