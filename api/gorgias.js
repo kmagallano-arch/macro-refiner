@@ -4,25 +4,28 @@ var CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
 module.exports = async function handler(req, res) {
   const ticketId = req.query.ticket_id || '';
+  const action = req.query.action || 'suggestions'; // 'suggestions' or 'refine'
+  const macroId = req.query.macro_id || '';
 
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   if (!ticketId) {
     return res.status(200).json({
-      status: "Waiting for ticket",
+      status: "Open a ticket",
       category: "-",
       customer: "-",
-      option1_reply: "Open a ticket to see suggestions.",
+      refined_reply: "Waiting for ticket data...",
+      option1_reply: "-",
       option2_reply: "-",
       option3_reply: "-"
     });
   }
 
   // Check cache first
-  var cached = cache[ticketId];
+  var cacheKey = ticketId + '_' + action + '_' + macroId;
+  var cached = cache[cacheKey];
   if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
-    console.log('Returning cached response for ticket:', ticketId);
     return res.status(200).json(cached.data);
   }
 
@@ -36,7 +39,8 @@ module.exports = async function handler(req, res) {
       status: "Missing config",
       category: "-",
       customer: "-",
-      option1_reply: "Environment variables not set.",
+      refined_reply: "Environment variables not set.",
+      option1_reply: "-",
       option2_reply: "-",
       option3_reply: "-"
     });
@@ -50,13 +54,13 @@ module.exports = async function handler(req, res) {
     });
 
     if (!ticketRes.ok) {
-      // If rate limited, return a friendly message (don't cache errors)
       if (ticketRes.status === 429) {
         return res.status(200).json({
-          status: "Rate limited",
+          status: "Rate limited - wait a moment",
           category: "-",
           customer: "-",
-          option1_reply: "Too many requests. Please wait a moment and try again.",
+          refined_reply: "Too many requests. Please wait.",
+          option1_reply: "-",
           option2_reply: "-",
           option3_reply: "-"
         });
@@ -65,7 +69,8 @@ module.exports = async function handler(req, res) {
         status: "Could not load ticket",
         category: "-",
         customer: "-",
-        option1_reply: "Unable to fetch ticket data.",
+        refined_reply: "Unable to fetch ticket.",
+        option1_reply: "-",
         option2_reply: "-",
         option3_reply: "-"
       });
@@ -93,7 +98,7 @@ module.exports = async function handler(req, res) {
 
     var category = 'General';
     var lowerContent = (subject + ' ' + ticketContent).toLowerCase();
-    if (lowerContent.indexOf('track') >= 0 || lowerContent.indexOf('shipping') >= 0 || lowerContent.indexOf('where') >= 0) {
+    if (lowerContent.indexOf('track') >= 0 || lowerContent.indexOf('shipping') >= 0 || lowerContent.indexOf('where') >= 0 || lowerContent.indexOf('delivery') >= 0) {
       category = 'WISMO';
     } else if (lowerContent.indexOf('return') >= 0 || lowerContent.indexOf('refund') >= 0) {
       category = 'Return';
@@ -101,11 +106,35 @@ module.exports = async function handler(req, res) {
       category = 'Cancellation';
     } else if (lowerContent.indexOf('subscription') >= 0) {
       category = 'Subscription';
-    } else if (lowerContent.indexOf('broken') >= 0 || lowerContent.indexOf('damaged') >= 0 || lowerContent.indexOf('not working') >= 0) {
+    } else if (lowerContent.indexOf('broken') >= 0 || lowerContent.indexOf('damaged') >= 0 || lowerContent.indexOf('not working') >= 0 || lowerContent.indexOf('defective') >= 0) {
       category = 'Product Issue';
     }
 
-    var prompt = 'You are a customer support agent for OSMO products. Generate 3 short reply options for this ticket.\n\nCustomer: ' + customerName + '\nSubject: ' + subject + '\nMessage: ' + ticketContent + '\n\nGenerate exactly 3 replies:\n1. EMPATHETIC - warm and understanding\n2. SOLUTION - direct and action-focused\n3. QUESTION - ask for more info\n\nFormat:\n===1===\n[reply]\n===2===\n[reply]\n===3===\n[reply]\n\nKeep each under 80 words. End with Best regards.';
+    // Generate refined reply based on ticket
+    var prompt = `You are a customer support agent for OSMO (consumer electronics: dashcams, robot vacuums, air fryers, etc).
+
+Write ONE helpful reply for this ticket.
+
+CUSTOMER: ${customerName}
+SUBJECT: ${subject}
+MESSAGE: ${ticketContent}
+
+STYLE GUIDELINES:
+- Be direct and get to the point quickly
+- Focus on solutions, not apologies
+- Sound natural and human, not robotic
+- Keep it concise (under 100 words)
+- Use simple, clear language
+- Only apologize once if truly necessary, then move to the solution
+- End with "Best regards" (no agent name)
+
+BAD EXAMPLE (too apologetic/robotic):
+"I sincerely apologize for any inconvenience this may have caused. I completely understand your frustration and I want to assure you that we take this matter very seriously..."
+
+GOOD EXAMPLE (direct/helpful):
+"Hi John, I checked your order and it shipped yesterday - here's your tracking link: [link]. It should arrive by Friday. Let me know if you need anything else!"
+
+Write the reply now:`;
 
     var claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -116,54 +145,43 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        max_tokens: 500,
         messages: [{ role: 'user', content: prompt }]
       })
     });
 
+    var refinedReply = 'Hi ' + customerName + ', thanks for reaching out. Let me help you with this.';
+    
     if (claudeRes.ok) {
       var claudeData = await claudeRes.json();
-      var text = claudeData.content?.[0]?.text || '';
-
-      var match1 = text.match(/===1===([\s\S]*?)(?====2===|$)/);
-      var match2 = text.match(/===2===([\s\S]*?)(?====3===|$)/);
-      var match3 = text.match(/===3===([\s\S]*?)$/);
-
-      var result = {
-        status: "3 Replies Ready",
-        category: category,
-        customer: customerName,
-        option1_reply: match1 ? match1[1].trim() : 'Could not generate.',
-        option2_reply: match2 ? match2[1].trim() : 'Could not generate.',
-        option3_reply: match3 ? match3[1].trim() : 'Could not generate.'
-      };
-
-      // Cache the successful result
-      cache[ticketId] = {
-        timestamp: Date.now(),
-        data: result
-      };
-
-      return res.status(200).json(result);
+      refinedReply = claudeData.content?.[0]?.text || refinedReply;
     }
 
-    var fallback = {
-      status: "AI unavailable",
+    var result = {
+      status: "Ready",
       category: category,
       customer: customerName,
-      option1_reply: 'Hi ' + customerName + ', thank you for reaching out. I would be happy to help you with this.',
-      option2_reply: '-',
-      option3_reply: '-'
+      refined_reply: refinedReply,
+      option1_reply: "-",
+      option2_reply: "-", 
+      option3_reply: "-"
     };
 
-    return res.status(200).json(fallback);
+    // Cache the result
+    cache[cacheKey] = {
+      timestamp: Date.now(),
+      data: result
+    };
+
+    return res.status(200).json(result);
 
   } catch (err) {
     return res.status(200).json({
       status: "Error",
       category: "-",
       customer: "-",
-      option1_reply: "Something went wrong: " + err.message,
+      refined_reply: "Something went wrong: " + err.message,
+      option1_reply: "-",
       option2_reply: "-",
       option3_reply: "-"
     });
