@@ -13,6 +13,7 @@ module.exports = async (req, res) => {
   }
 
   const ticketId = req.query.ticket_id;
+  const macroToRefine = req.query.macro || null;
   
   if (!ticketId) {
     return res.status(400).json({ error: "Missing ticket_id" });
@@ -131,8 +132,35 @@ module.exports = async (req, res) => {
       orderContext += "Items: " + items + "\n";
     }
 
-    // Build the prompt with macro knowledge
-    const prompt = `You are a customer support agent for OSMO (consumer electronics). Generate a reply based on our standard macros and processes.
+    // Build the prompt - different for macro refinement vs generation
+    let prompt;
+    
+    if (macroToRefine) {
+      // Refine existing macro
+      prompt = `You are a customer support agent for OSMO (consumer electronics). Refine this macro template for this specific ticket.
+
+ORIGINAL MACRO:
+${macroToRefine}
+
+TICKET CONTEXT:
+CUSTOMER: ${customerName}
+SUBJECT: ${subject}
+MESSAGE: ${messageText}
+CATEGORY: ${category}${orderContext}
+
+INSTRUCTIONS:
+- Keep the same structure and intent of the original macro
+- Replace placeholders with actual customer/order info where available
+- Customize the message to address the specific customer inquiry
+- Keep the professional tone
+- Start with "Hi ${customerName},"
+- End with "Best regards,"
+- Keep under 150 words
+
+Refined reply:`;
+    } else {
+      // Generate new reply
+      prompt = `You are a customer support agent for OSMO (consumer electronics). Generate a reply based on our standard macros and processes.
 
 CUSTOMER: ${customerName}
 SUBJECT: ${subject}
@@ -210,6 +238,7 @@ NON-RETURNABLE (hygienic items):
 - If just dissatisfied: Offer 15% PR
 
 Generate ONE concise reply following the appropriate macro pattern:`;
+    }
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
