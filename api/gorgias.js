@@ -264,7 +264,7 @@ Generate ONE concise reply following the appropriate macro pattern:`;
 
     // Use Haiku for cost savings (10x cheaper)
     const response = await anthropic.messages.create({
-      model: "claude-3-5-haiku-20241022",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 400,
       messages: [{ role: "user", content: prompt }],
     });
