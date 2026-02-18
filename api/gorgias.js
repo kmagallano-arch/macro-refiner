@@ -4,6 +4,27 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Supabase client
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+
+async function logUsage(data) {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/usage_logs`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(data)
+    });
+  } catch (error) {
+    console.error('Failed to log usage:', error);
+  }
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -14,6 +35,7 @@ module.exports = async (req, res) => {
 
   const ticketId = req.query.ticket_id;
   const macroToRefine = req.query.macro || null;
+  const agentName = req.query.agent_name || "Unknown";
   
   if (!ticketId) {
     return res.status(400).json({ error: "Missing ticket_id" });
@@ -134,9 +156,10 @@ module.exports = async (req, res) => {
 
     // Build the prompt - different for macro refinement vs generation
     let prompt;
+    let actionType = "generate";
     
     if (macroToRefine) {
-      // Refine existing macro
+      actionType = "refine";
       prompt = `You are a customer support agent for OSMO (consumer electronics). Refine this macro template for this specific ticket.
 
 ORIGINAL MACRO:
@@ -159,7 +182,6 @@ INSTRUCTIONS:
 
 Refined reply:`;
     } else {
-      // Generate new reply
       prompt = `You are a customer support agent for OSMO (consumer electronics). Generate a reply based on our standard macros and processes.
 
 CUSTOMER: ${customerName}
@@ -240,13 +262,32 @@ NON-RETURNABLE (hygienic items):
 Generate ONE concise reply following the appropriate macro pattern:`;
     }
 
+    // Use Haiku for cost savings (10x cheaper)
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-haiku-3-5-20241022",
       max_tokens: 400,
       messages: [{ role: "user", content: prompt }],
     });
 
     const reply = response.content[0].text.trim();
+    
+    // Calculate tokens and cost (Haiku pricing)
+    const tokensInput = response.usage?.input_tokens || 2000;
+    const tokensOutput = response.usage?.output_tokens || 150;
+    const estimatedCost = (tokensInput * 0.00000025) + (tokensOutput * 0.00000125);
+
+    // Log usage to Supabase
+    await logUsage({
+      agent_name: agentName,
+      ticket_id: ticketId,
+      category: category,
+      order_number: orderNumber,
+      action_type: actionType,
+      tokens_input: tokensInput,
+      tokens_output: tokensOutput,
+      estimated_cost: estimatedCost,
+      model: "claude-haiku-3-5"
+    });
 
     return res.status(200).json({
       status: orders.length > 0 ? "Ready (" + orders.length + " orders)" : "Ready",
